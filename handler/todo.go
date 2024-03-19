@@ -2,6 +2,9 @@ package handler
 
 import (
 	"context"
+	"database/sql"
+	"encoding/json"
+	"net/http"
 
 	"github.com/TechBowl-japan/go-stations/model"
 	"github.com/TechBowl-japan/go-stations/service"
@@ -13,9 +16,43 @@ type TODOHandler struct {
 }
 
 // NewTODOHandler returns TODOHandler based http.Handler.
-func NewTODOHandler(svc *service.TODOService) *TODOHandler {
+func NewTODOHandler(todoDB *sql.DB) *TODOHandler {
 	return &TODOHandler{
-		svc: svc,
+		svc: service.NewTODOService(todoDB),
+	}
+}
+
+func (h *TODOHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
+	if r.Method == http.MethodPost {
+		req := model.CreateTODORequest{}
+
+		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+			http.Error(w, err.Error(), http.StatusBadRequest)
+			return
+		}
+
+		if req.Subject == "" {
+			http.Error(w, "subject is required", http.StatusBadRequest)
+			return
+		}
+
+		todo, err := h.svc.CreateTODO(r.Context(), req.Subject, req.Description)
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+			return
+		}
+
+		res := model.CreateTODOResponse{
+			TODO: *todo,
+		}
+
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusOK)
+		if err := json.NewEncoder(w).Encode(res); err != nil {
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+		}
+	} else {
+		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
 	}
 }
 
